@@ -48,7 +48,7 @@ If your pipeline cannot do all three, your model is operating with incomplete in
 | Stage | Output Table | Rows | Notes |
 | --- | --- | --- | --- |
 | Ingestion (CSV) | credit_raw | 150,000 | Raw Kaggle data, no transformation |
-| Ingestion (API) | macro_indicators | 15 | World Bank: 4 indicators × 15 years |
+| Ingestion (API) | macro_indicators | 15 | World Bank: 4 indicators x 15 years |
 | Transform | credit_cleaned | 149,391 | After dedup, invalid age removal, winsorizing |
 | Enrichment | credit_enriched | 149,391 | JOIN with macro indicators on data_year |
 | Feature Store | credit_features | 149,391 | 31 features across 5 categories |
@@ -128,27 +128,50 @@ credit-data-pipeline/
 
 ---
 
+---
+
 ## How to Reproduce
+
+**1. Clone and setup environment**
+
+```bash
 git clone https://github.com/Agathahah/credit-data-pipeline.git
 cd credit-data-pipeline
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-Setup PostgreSQL
+```
+
+**2. Setup PostgreSQL**
+
+```bash
 brew install postgresql@14
 brew services start postgresql@14
 psql postgres -c "CREATE USER dataengineer WITH PASSWORD 'de_password123';"
 psql postgres -c "CREATE DATABASE credit_risk_db OWNER dataengineer;"
-Create .env
-echo "DB_HOST=localhost
+```
+
+**3. Create `.env` file**
+
+```bash
+cat > .env << 'ENVEOF'
+DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=credit_risk_db
 DB_USER=dataengineer
-DB_PASSWORD=de_password123" > .env
-Download dataset to data/raw/cs-training.csv
-https://www.kaggle.com/c/GiveMeSomeCredit/data
+DB_PASSWORD=de_password123
+ENVEOF
+```
 
-Run full pipeline
+**4. Download dataset**
+
+Download `cs-training.csv` from [Kaggle](https://www.kaggle.com/c/GiveMeSomeCredit/data) and place it at:
+data/raw/cs-training.csv
+
+**5. Run full pipeline**
+
+```bash
 python run_pipeline.py
+```
 
 ---
 
@@ -178,4 +201,3 @@ inflation rate · lending interest rate · GDP growth rate · unemployment rate
 
 *Author: Agatha Ulina Silalahi*
 *[LinkedIn](https://www.linkedin.com/in/agatha-silalahi-722507215/) · [Kaggle](https://www.kaggle.com/agathasilalahi) · [GitHub](https://github.com/Agathahah)*
-
