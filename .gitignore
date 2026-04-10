@@ -23,3 +23,8 @@ models/*.pkl
 
 # Logs
 *.log
+
+# Google Cloud credentials (NEVER commit this)
+credentials/
+*.json
+!docs/model_metrics.json
