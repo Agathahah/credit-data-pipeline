@@ -1,0 +1,25 @@
+# Environment
+venv/
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.ipynb_checkpoints/
+
+# Data (jangan upload ke GitHub)
+data/raw/
+data/processed/
+*.csv
+*.zip
+
+# Model binary
+models/*.pkl
+
+# OS
+.DS_Store
+
+# Logs
+*.log
