@@ -52,6 +52,8 @@ If your pipeline cannot do all three, your model is operating with incomplete in
 | Transform | credit_cleaned | 149,391 | After dedup, invalid age removal, winsorizing |
 | Enrichment | credit_enriched | 149,391 | JOIN with macro indicators on data_year |
 | Feature Store | credit_features | 149,391 | 31 features across 5 categories |
+| Cloud Export | BigQuery: credit_features | 149,391 | Exported to GCP for cloud analytics |
+| Cloud Export | BigQuery: credit_summary_by_age_group | 4 | Aggregated analytics table |
 
 ### Model Performance (trained on feature store output)
 
@@ -97,6 +99,7 @@ A data engineer who can only run `df = pd.read_csv()` is not useful in productio
 | No quality reporting | Explicit quality checks at each stage |
 | Features from raw columns only | Macro-credit interaction features from API |
 | Train and done | Auditable, reproducible, restartable at any stage |
+| Local storage only | PostgreSQL (local) + BigQuery (cloud analytics layer) |
 
 ---
 
@@ -185,7 +188,7 @@ python run_pipeline.py
 
 ## Tech Stack
 
-`Python 3.12` · `PostgreSQL` · `SQLAlchemy` · `XGBoost` · `World Bank REST API` · `pandas` · `scikit-learn` · `matplotlib` · `seaborn`
+`Python 3.12` · `PostgreSQL` · `SQLAlchemy` · `Google BigQuery` · `XGBoost` · `World Bank REST API` · `pandas` · `scikit-learn` · `matplotlib` · `seaborn`
 
 ---
 
