@@ -6,28 +6,32 @@ multi-stage PostgreSQL pipeline.
 
 ---
 
-## 🏗️ Architecture
-[SOURCE 1] Kaggle CSV (150K rows)
-[SOURCE 2] World Bank REST API
-(inflation, interest rate, GDP growth, unemployment)
-|
-v
-credit_raw (PostgreSQL)
-macro_indicators (PostgreSQL)
-|
-v
-credit_cleaned  — transform + quality checks
-|
-v
-credit_enriched — JOIN credit + macro data
-|
-v
-credit_features — 18 engineered features
-|
-v
-XGBoost Model — ROC-AUC 0.8691
+## Architecture
 
----
+```
+[SOURCE 1] Kaggle CSV (150K rows)          [SOURCE 2] World Bank REST API
+       │                                           │   (inflation, interest rate,
+       │                                           │    GDP growth, unemployment)
+       ▼                                           ▼
+  credit_raw (PostgreSQL)              macro_indicators (PostgreSQL)
+       │                                           │
+       └──────────────────┬────────────────────────┘
+                          ▼
+                   credit_cleaned
+                (transform + quality checks)
+                          │
+                          ▼
+                   credit_enriched
+                (JOIN credit + macro data)
+                          │
+                          ▼
+                   credit_features
+                (18 engineered features)
+                          │
+                          ▼
+                 XGBoost Model
+                (ROC-AUC: 0.8691)
+```
 
 ## 🔧 Tech Stack
 
@@ -42,29 +46,31 @@ XGBoost Model — ROC-AUC 0.8691
 
 ---
 
-## 📁 Project Structure
+## Project Structure
+
+```
 credit-data-pipeline/
 ├── src/
 │   ├── ingestion/
-│   │   ├── ingest_credit.py      # SOURCE 1: CSV to PostgreSQL
-│   │   └── ingest_macro.py       # SOURCE 2: World Bank API to PostgreSQL
+│   │   ├── ingest_credit.py        # SOURCE 1: CSV → PostgreSQL
+│   │   └── ingest_macro.py         # SOURCE 2: World Bank API → PostgreSQL
 │   ├── transform/
-│   │   ├── transform_credit.py   # Clean and quality check
-│   │   └── enrich_with_macro.py  # JOIN credit and macro data
+│   │   ├── transform_credit.py     # Clean and quality check
+│   │   └── enrich_with_macro.py    # JOIN credit and macro data
 │   ├── features/
-│   │   └── build_features.py     # 18 engineered features
+│   │   └── build_features.py       # 18 engineered features
 │   ├── models/
-│   │   └── train.py              # XGBoost training and evaluation
+│   │   └── train.py                # XGBoost training and evaluation
 │   └── utils/
-│       └── db.py                 # DB connection helper
+│       └── db.py                   # DB connection helper
 ├── docs/
 │   ├── roc_curve.png
 │   ├── feature_importance.png
 │   ├── confusion_matrix.png
 │   └── model_metrics.json
-├── run_pipeline.py               # Run all 5 stages
+├── run_pipeline.py                 # Run all 5 stages end-to-end
 └── requirements.txt
----
+```
 
 ## 🚀 How to Run
 
