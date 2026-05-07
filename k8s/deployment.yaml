@@ -57,7 +57,7 @@ spec:
           # Image dari Docker Hub atau private registry
           # Format: registry/image:tag
           image: agathahah/credit-data-pipeline:latest
-          imagePullPolicy: Always
+          imagePullPolicy: Never
 
           # ============================================================
           # Environment variables — ambil dari Secret, bukan hardcode
@@ -119,5 +119,5 @@ spec:
           persistentVolumeClaim:
             claimName: credit-model-pvc
 
-      # Restart policy untuk batch job
-      restartPolicy: OnFailure
+      # Restart policy untuk Deployment harus Always
+      restartPolicy: Always
