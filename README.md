@@ -2,9 +2,11 @@
 
 ### *Because a model is only as good as the data pipeline that feeds it*
 
-![Python](https://img.shields.io/badge/Python-3.12-blue)
+![Python](https://img.shields.io/badge/Python-3.10-blue)
 ![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791)
-![XGBoost](https://img.shields.io/badge/XGBoost-Latest-orange)
+![XGBoost](https://img.shields.io/badge/XGBoost-2.0.3-orange)
+![Docker](https://img.shields.io/badge/Docker-Containerized-2496ED)
+![Kubernetes](https://img.shields.io/badge/Kubernetes-Deployed-326CE5)
 ![Status](https://img.shields.io/badge/Status-Complete-brightgreen)
 
 ---
@@ -64,6 +66,16 @@ If your pipeline cannot do all three, your model is operating with incomplete in
 | Training rows | 119,501 | 80/20 stratified split |
 | Features used | 31 | Including 3 macro-credit interaction features |
 
+### Deployment Performance
+
+| Environment | ROC-AUC | Total Time | Records |
+| --- | --- | --- | --- |
+| Local (venv) | 0.8691 | ~28s | 149,377 |
+| Docker Compose | 0.8690 | 30.1s | 149,377 |
+| Kubernetes (minikube) | 0.8690 | 32.7s | 149,377 |
+
+Results are consistent across all three environments — confirming that containerization introduces no data or model drift.
+
 ---
 
 ## Key Findings
@@ -100,6 +112,70 @@ A data engineer who can only run `df = pd.read_csv()` is not useful in productio
 | Features from raw columns only | Macro-credit interaction features from API |
 | Train and done | Auditable, reproducible, restartable at any stage |
 | Local storage only | PostgreSQL (local) + BigQuery (cloud analytics layer) |
+| Runs only on local machine | Containerized — runs on Docker and Kubernetes |
+
+---
+
+## Deployment
+
+This pipeline is fully containerized and has been tested across three environments without any change to source code or model results.
+
+### Option 1 — Docker Compose (recommended for local development)
+
+```bash
+# Clone repo
+git clone https://github.com/Agathahah/credit-data-pipeline.git
+cd credit-data-pipeline
+
+# Setup environment file
+cp .env.example .env
+
+# Place dataset
+# Download cs-training.csv from Kaggle and put it at data/raw/cs-training.csv
+
+# Build and run
+make build
+make db-only        # terminal 1: start PostgreSQL
+make pipeline-only  # terminal 2: run pipeline
+```
+
+The `docker-compose.yml` orchestrates two services: a PostgreSQL container and the pipeline container. The pipeline uses a `depends_on` health check to ensure the database is fully ready before execution begins — the same reliability guarantee required in production ML systems.
+
+### Option 2 — Kubernetes (minikube for local cluster testing)
+
+```bash
+# Start minikube cluster
+minikube start --cpus=4 --memory=4096 --driver=docker
+
+# Point Docker CLI to minikube registry
+eval $(minikube docker-env)
+
+# Build image inside minikube
+docker build -t agathahah/credit-data-pipeline:latest .
+
+# Deploy
+kubectl apply -f k8s/service.yaml
+kubectl apply -f k8s/deployment.yaml
+
+# Monitor
+kubectl get pods -n ml-production
+kubectl logs -f deployment/credit-pipeline -n ml-production
+```
+
+The Kubernetes configuration includes:
+- **Namespace isolation** (`ml-production`) separating this workload from other cluster tenants
+- **Init container** that blocks pipeline startup until PostgreSQL passes its health check
+- **Resource limits** (CPU: 250m–1000m, Memory: 512Mi–2Gi) preventing resource monopolization
+- **PersistentVolumeClaims** for data and model artifact storage, surviving pod restarts
+- **Secret management** for database credentials, replacing plaintext environment variables
+
+### Option 3 — Local virtualenv
+
+```bash
+python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+python run_pipeline.py
+```
 
 ---
 
@@ -120,60 +196,21 @@ credit-data-pipeline/
 │   │   └── train.py                # XGBoost training and evaluation
 │   └── utils/
 │       └── db.py                   # DB connection helper
+├── k8s/
+│   ├── deployment.yaml             # Pod spec, resource limits, init container
+│   └── service.yaml                # PostgreSQL service, PVCs, secrets, namespace
 ├── docs/
 │   ├── roc_curve.png
 │   ├── feature_importance.png
 │   ├── confusion_matrix.png
 │   └── model_metrics.json
+├── Dockerfile                      # Python 3.10-slim, production dependencies only
+├── docker-compose.yml              # Pipeline + PostgreSQL orchestration
+├── requirements_docker.txt         # Production dependencies (no Jupyter/dev tools)
+├── Makefile                        # build / run / stop / logs / shell shortcuts
+├── init.sql                        # PostgreSQL initialization script
 ├── run_pipeline.py                 # Run all 5 stages end-to-end
 └── requirements.txt
-```
-
----
-
----
-
-## How to Reproduce
-
-**1. Clone and setup environment**
-
-```bash
-git clone https://github.com/Agathahah/credit-data-pipeline.git
-cd credit-data-pipeline
-python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-```
-
-**2. Setup PostgreSQL**
-
-```bash
-brew install postgresql@14
-brew services start postgresql@14
-psql postgres -c "CREATE USER dataengineer WITH PASSWORD 'de_password123';"
-psql postgres -c "CREATE DATABASE credit_risk_db OWNER dataengineer;"
-```
-
-**3. Create `.env` file**
-
-```bash
-cat > .env << 'ENVEOF'
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=credit_risk_db
-DB_USER=dataengineer
-DB_PASSWORD=de_password123
-ENVEOF
-```
-
-**4. Download dataset**
-
-Download `cs-training.csv` from [Kaggle](https://www.kaggle.com/c/GiveMeSomeCredit/data) and place it at:
-data/raw/cs-training.csv
-
-**5. Run full pipeline**
-
-```bash
-python run_pipeline.py
 ```
 
 ---
@@ -188,7 +225,7 @@ python run_pipeline.py
 
 ## Tech Stack
 
-`Python 3.12` · `PostgreSQL` · `SQLAlchemy` · `Google BigQuery` · `XGBoost` · `World Bank REST API` · `pandas` · `scikit-learn` · `matplotlib` · `seaborn`
+`Python 3.10` · `PostgreSQL` · `SQLAlchemy` · `Google BigQuery` · `XGBoost` · `World Bank REST API` · `pandas` · `scikit-learn` · `Docker` · `Kubernetes` · `matplotlib` · `seaborn`
 
 ---
 
