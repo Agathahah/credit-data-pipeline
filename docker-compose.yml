@@ -1,0 +1,94 @@
+# ============================================================
+# docker-compose.yml
+# Menjalankan DUA service sekaligus:
+#   1. postgres  — database server
+#   2. pipeline  — credit-data-pipeline app kita
+#
+# Cara pakai:
+#   docker-compose up           → jalankan semua
+#   docker-compose up postgres  → hanya database
+#   docker-compose logs pipeline → lihat log pipeline
+# ============================================================
+
+version: '3.8'
+
+services:
+
+  # ============================================================
+  # SERVICE 1: PostgreSQL Database
+  # ============================================================
+  postgres:
+    image: postgres:14-alpine          # alpine = image lebih kecil
+    container_name: credit_postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: credit_risk_db
+      POSTGRES_USER: dataengineer
+      POSTGRES_PASSWORD: de_password123
+
+    ports:
+      - "5433:5432"                    # host:container (pakai 5433 di host
+                                       # agar tidak bentrok dgn PostgreSQL lokal)
+    volumes:
+      - postgres_data:/var/lib/postgresql/data   # data persisten
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql  # init script
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dataengineer -d credit_risk_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================
+  # SERVICE 2: Credit Data Pipeline
+  # ============================================================
+  pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: credit_pipeline
+    restart: "no"                      # pipeline dijalankan sekali, tidak restart
+
+    depends_on:
+      postgres:
+        condition: service_healthy     # tunggu postgres SEHAT dulu baru jalan
+
+    environment:
+      DB_HOST: postgres                # nama service = hostname di Docker network
+      DB_PORT: 5432
+      DB_NAME: credit_risk_db
+      DB_USER: dataengineer
+      DB_PASSWORD: de_password123
+
+    volumes:
+      - ./data:/app/data               # mount folder data dari host ke container
+      - ./docs:/app/docs               # mount folder docs (untuk simpan plot)
+      - ./src:/app/src                 # mount src (untuk development: edit tanpa rebuild)
+
+    # Override CMD jika mau jalankan stage tertentu saja:
+    # command: python src/ingestion/ingest_credit.py
+
+  # ============================================================
+  # SERVICE 3 (OPSIONAL): pgAdmin — GUI untuk lihat database
+  # Uncomment kalau mau pakai
+  # ============================================================
+  # pgadmin:
+  #   image: dpage/pgadmin4
+  #   container_name: credit_pgadmin
+  #   environment:
+  #     PGADMIN_DEFAULT_EMAIL: agatha@example.com
+  #     PGADMIN_DEFAULT_PASSWORD: admin123
+  #   ports:
+  #     - "8080:80"
+  #   depends_on:
+  #     - postgres
+
+# ============================================================
+# Volume: tempat data PostgreSQL disimpan secara persisten
+# Kalau container dihapus, data tetap ada di volume ini
+# ============================================================
+volumes:
+  postgres_data:
+    driver: local

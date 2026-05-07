@@ -1,6 +1,6 @@
 {
-  "roc_auc": 0.8691,
-  "average_precision": 0.4132,
+  "roc_auc": 0.869,
+  "average_precision": 0.4133,
   "n_train": 119501,
   "n_test": 29876,
   "n_features": 31,

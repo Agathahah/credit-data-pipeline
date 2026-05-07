@@ -1,0 +1,32 @@
+# ============================================================
+# requirements_docker.txt
+# Versi RAMPING untuk Docker — hanya yang dibutuhkan pipeline
+# Tidak include Jupyter, ipykernel, dan dev tools lainnya
+# karena container production tidak butuh itu
+# ============================================================
+
+# Database
+SQLAlchemy==2.0.49
+psycopg2-binary==2.9.11
+python-dotenv==1.2.2
+
+# Data processing
+pandas==2.2.2
+numpy==1.26.4
+
+# Machine learning
+xgboost==2.0.3
+scikit-learn==1.4.2
+imbalanced-learn==0.12.3
+
+# API & HTTP
+requests==2.33.1
+
+# Visualization (untuk generate plots)
+matplotlib==3.8.4
+seaborn==0.13.2
+
+# Utilities
+python-dateutil==2.9.0.post0
+scipy==1.13.1
+joblib==1.4.2

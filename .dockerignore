@@ -1,0 +1,49 @@
+# ============================================================
+# .dockerignore
+# File/folder yang TIDAK akan di-copy ke dalam Docker image
+# Mirip dengan .gitignore tapi untuk Docker build context
+# Tujuan: image lebih kecil, build lebih cepat
+# ============================================================
+
+# Virtual environment Python
+venv/
+.venv/
+env/
+
+# Data files (akan di-mount via volume, bukan di-copy)
+data/
+
+# Jupyter notebooks (tidak dibutuhkan di container)
+*.ipynb
+.ipynb_checkpoints/
+
+# Cache Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Environment secrets
+.env
+
+# Git
+.git/
+.gitignore
+
+# Documentation dev files
+*.md
+!README.md
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test files
+tests/
+pytest.ini
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
