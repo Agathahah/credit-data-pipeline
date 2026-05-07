@@ -1,0 +1,123 @@
+# ============================================================
+# deployment.yaml
+# Mendefinisikan bagaimana container pipeline di-deploy
+# di Kubernetes cluster.
+#
+# Konsep penting:
+# - Deployment = controller yang menjamin N replica berjalan
+# - Pod = unit terkecil Kubernetes, berisi 1+ container
+# - Resource limits = batasan CPU/memory per container
+# ============================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: credit-pipeline
+  namespace: ml-production
+  labels:
+    app: credit-pipeline
+    version: "1.0"
+    team: data-science
+
+spec:
+  # Jumlah replica (instance) yang harus selalu berjalan
+  # Untuk pipeline batch, biasanya 1. Untuk inference API, bisa 3+
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: credit-pipeline
+
+  template:
+    metadata:
+      labels:
+        app: credit-pipeline
+        version: "1.0"
+
+    spec:
+      # ============================================================
+      # Init container: tunggu PostgreSQL siap sebelum pipeline jalan
+      # Sama konsepnya dengan depends_on di docker-compose
+      # ============================================================
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox:1.35
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z postgres-service 5432; do
+                echo "Waiting for PostgreSQL..."
+                sleep 3
+              done
+              echo "PostgreSQL is ready!"
+
+      containers:
+        - name: credit-pipeline
+          # Image dari Docker Hub atau private registry
+          # Format: registry/image:tag
+          image: agathahah/credit-data-pipeline:latest
+          imagePullPolicy: Always
+
+          # ============================================================
+          # Environment variables — ambil dari Secret, bukan hardcode
+          # Ini best practice keamanan di production
+          # ============================================================
+          env:
+            - name: DB_HOST
+              value: "postgres-service"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: credit-pipeline-secret
+                  key: db-name
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: credit-pipeline-secret
+                  key: db-user
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: credit-pipeline-secret
+                  key: db-password
+
+          # ============================================================
+          # Resource limits — sangat penting di production
+          # requests = minimum yang dijamin cluster
+          # limits = maksimum yang boleh dipakai
+          # ============================================================
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"        # 0.25 CPU core
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"       # 1 CPU core penuh
+
+          # ============================================================
+          # Volume mount — data dari PersistentVolume
+          # Setara dengan volume mount di docker-compose
+          # ============================================================
+          volumeMounts:
+            - name: data-volume
+              mountPath: /app/data
+            - name: model-volume
+              mountPath: /app/models
+
+      # ============================================================
+      # Volumes — definisi storage yang di-mount
+      # PVC = PersistentVolumeClaim: minta storage dari cluster
+      # ============================================================
+      volumes:
+        - name: data-volume
+          persistentVolumeClaim:
+            claimName: credit-data-pvc
+        - name: model-volume
+          persistentVolumeClaim:
+            claimName: credit-model-pvc
+
+      # Restart policy untuk batch job
+      restartPolicy: OnFailure
