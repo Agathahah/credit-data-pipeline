@@ -1,88 +1,84 @@
-"""
-End-to-End Data Engineering Pipeline for Credit Risk ML
-========================================================
-Run this to execute all 5 pipeline stages in sequence.
+"""End-to-end credit risk pipeline.
 
 Stages:
-  1. Ingestion  — CSV + World Bank API → PostgreSQL
-  2. Transform  — Clean + quality check → PostgreSQL
-  3. Enrich     — Join credit + macro data → PostgreSQL
-  4. Features   — Build 18 features → PostgreSQL feature store
-  5. Training   — XGBoost model → docs/ + models/
+  1. Ingestion  - CSV + World Bank API -> credit_raw, macro_indicators
+  2. Transform  - deterministic cleaning -> credit_cleaned
+  3. Enrich     - join macro indicators -> credit_enriched
+  4. Features   - row-wise feature engineering -> credit_features
+  5. Training   - logistic baseline + XGBoost -> docs/, models/
+
+Every stage writes its row counts to docs/pipeline_report.json, so numbers in
+the README can be checked against an artifact produced by the code.
 """
+
+from __future__ import annotations
+
+import json
 import logging
+import os
 import sys
 import time
-import os
+
 import pandas as pd
+
+from src.features.build_features import build_features
+from src.ingestion.ingest_credit import ingest_credit_csv
+from src.ingestion.ingest_macro import ingest_macro_indicators
+from src.models.train import train
+from src.transform.enrich_with_macro import enrich_with_macro
+from src.transform.transform_credit import run_quality_checks, transform_credit
+from src.utils.db import get_engine, get_row_count
 
 os.makedirs("docs", exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler("docs/pipeline.log")
-    ]
+    handlers=[logging.StreamHandler(sys.stdout), logging.FileHandler("docs/pipeline.log")],
 )
 logger = logging.getLogger(__name__)
 
-def run():
-    total_start = time.time()
-    logger.info("="*60)
-    logger.info("CREDIT RISK DATA PIPELINE — START")
-    logger.info("="*60)
 
-    # Stage 1
-    logger.info("\n[STAGE 1/5] Ingestion")
-    from src.ingestion.ingest_credit import ingest_credit_csv
-    from src.ingestion.ingest_macro import ingest_macro_indicators
-    ingest_credit_csv()
-    ingest_macro_indicators()
-
-    # Stage 2
-    logger.info("\n[STAGE 2/5] Transform + Quality Check")
-    from src.transform.transform_credit import run_quality_checks, transform_credit
-    from src.utils.db import get_engine, get_row_count
+def run(csv_path: str = "data/raw/cs-training.csv") -> dict:
+    start = time.time()
     engine = get_engine()
-    df_raw = pd.read_sql("SELECT * FROM credit_raw", engine)
-    run_quality_checks(df_raw, "raw")
-    df_clean = transform_credit(df_raw)
-    df_clean.to_sql("credit_cleaned", engine, if_exists="replace", index=False, chunksize=5000)
-    logger.info(f"credit_cleaned: {get_row_count(engine, 'credit_cleaned')} rows")
+    report: dict = {"stages": {}}
 
-    # Stage 3
-    logger.info("\n[STAGE 3/5] Enrich with Macro Indicators")
-    from src.transform.enrich_with_macro import enrich_with_macro
-    enrich_with_macro()
+    logger.info("[STAGE 1/5] Ingestion")
+    ingest_credit_csv(csv_path, engine=engine)
+    ingest_macro_indicators(engine=engine)
+    report["stages"]["credit_raw"] = get_row_count(engine, "credit_raw")
+    report["stages"]["macro_indicators"] = get_row_count(engine, "macro_indicators")
 
-    # Stage 4
-    logger.info("\n[STAGE 4/5] Feature Engineering")
-    from src.features.build_features import build_features
-    df_enriched = pd.read_sql("SELECT * FROM credit_enriched", engine)
-    df_feat = build_features(df_enriched)
-    df_feat.to_sql("credit_features", engine, if_exists="replace", index=False, chunksize=5000)
-    logger.info(f"credit_features: {get_row_count(engine, 'credit_features')} rows, "
-                f"{len(df_feat.columns)} cols")
+    logger.info("[STAGE 2/5] Transform + quality checks")
+    raw = pd.read_sql("SELECT * FROM credit_raw", engine)
+    report["quality_raw"] = run_quality_checks(raw, "raw")
+    clean, report["transform_audit"] = transform_credit(raw)
+    clean.to_sql("credit_cleaned", engine, if_exists="replace", index=False, chunksize=5000)
+    report["stages"]["credit_cleaned"] = get_row_count(engine, "credit_cleaned")
 
-    # Stage 5
-    logger.info("\n[STAGE 5/5] Model Training")
-    from src.models.train import train
-    model, metrics = train()
+    logger.info("[STAGE 3/5] Enrich with macro indicators")
+    _, report["enrichment"] = enrich_with_macro(engine)
+    report["stages"]["credit_enriched"] = get_row_count(engine, "credit_enriched")
 
-    elapsed = time.time() - total_start
-    logger.info("\n" + "="*60)
-    logger.info("PIPELINE COMPLETED")
-    logger.info("="*60)
-    logger.info(f"  Total time        : {elapsed:.1f}s")
-    logger.info(f"  ROC-AUC           : {metrics['roc_auc']}")
-    logger.info(f"  Avg Precision     : {metrics['average_precision']}")
-    logger.info(f"  Features used     : {metrics['n_features']}")
-    logger.info(f"  Training rows     : {metrics['n_train']}")
-    logger.info(f"  DB tables created : credit_raw, macro_indicators,")
-    logger.info(f"                      credit_cleaned, credit_enriched, credit_features")
-    logger.info(f"  Artifacts saved   : docs/ and models/")
-    logger.info("="*60)
+    logger.info("[STAGE 4/5] Feature engineering")
+    enriched = pd.read_sql("SELECT * FROM credit_enriched", engine)
+    feats = build_features(enriched)
+    feats.to_sql("credit_features", engine, if_exists="replace", index=False, chunksize=5000)
+    report["stages"]["credit_features"] = get_row_count(engine, "credit_features")
+
+    logger.info("[STAGE 5/5] Model training")
+    _, metrics = train(engine)
+    report["xgboost_test"] = {k: metrics["xgboost"][k] for k in ("roc_auc", "pr_auc", "ks")}
+    report["baseline_test"] = {
+        k: metrics["logistic_regression_baseline"][k] for k in ("roc_auc", "pr_auc", "ks")
+    }
+    report["seconds"] = round(time.time() - start, 1)
+
+    with open("docs/pipeline_report.json", "w") as f:
+        json.dump(report, f, indent=2)
+    logger.info("PIPELINE COMPLETED in %.1fs: %s", report["seconds"], report["stages"])
+    return report
+
 
 if __name__ == "__main__":
-    run()
+    run(os.getenv("CREDIT_CSV", "data/raw/cs-training.csv"))

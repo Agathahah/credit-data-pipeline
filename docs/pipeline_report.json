@@ -1,0 +1,59 @@
+{
+  "stages": {
+    "credit_raw": 150000,
+    "macro_indicators": 15,
+    "credit_cleaned": 149377,
+    "credit_enriched": 149377,
+    "credit_features": 149377
+  },
+  "quality_raw": {
+    "stage": "raw",
+    "total_rows": 150000,
+    "total_cols": 11,
+    "duplicate_rows": 609,
+    "null_pct": {
+      "default_flag": 0.0,
+      "revolving_util": 0.0,
+      "age": 0.0,
+      "past_due_30_59": 0.0,
+      "debt_ratio": 0.0,
+      "monthly_income": 19.82,
+      "open_credit_lines": 0.0,
+      "times_90_days_late": 0.0,
+      "real_estate_loans": 0.0,
+      "past_due_60_89": 0.0,
+      "num_dependents": 2.62
+    },
+    "invalid_age": 14,
+    "revolving_util_above_1": 3321,
+    "past_due_sentinel_rows": 269
+  },
+  "transform_audit": {
+    "rows_in": 150000,
+    "removed_duplicates": 609,
+    "removed_invalid_age": 14,
+    "past_due_sentinel_rows_set_to_nan": 225,
+    "rows_out": 149377
+  },
+  "enrichment": {
+    "distinct_years_in_credit_data": 1,
+    "rows_without_macro_match": 0,
+    "macro_columns_distinct_values": {
+      "inflation_rate": 1,
+      "lending_interest_rate": 1,
+      "gdp_growth_rate": 1,
+      "unemployment_rate": 1
+    }
+  },
+  "xgboost_test": {
+    "roc_auc": 0.8656,
+    "pr_auc": 0.4115,
+    "ks": 0.5784
+  },
+  "baseline_test": {
+    "roc_auc": 0.8605,
+    "pr_auc": 0.3787,
+    "ks": 0.5691
+  },
+  "seconds": 50.9
+}
