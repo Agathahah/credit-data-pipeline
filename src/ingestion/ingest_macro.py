@@ -1,7 +1,10 @@
-import requests
-import pandas as pd
-from functools import reduce
 import logging
+import os
+from functools import reduce
+
+import pandas as pd
+import requests
+
 from src.utils.db import get_engine, get_row_count
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -34,18 +37,28 @@ def fetch_indicator(code: str, name: str, start: int = 2000, end: int = 2014) ->
     logger.info(f"  Got {len(df)} records for {name}")
     return df
 
-def ingest_macro_indicators():
-    logger.info("[SOURCE 2] Fetching macroeconomic indicators from World Bank API")
-    dfs = [fetch_indicator(code, name) for code, name in INDICATORS.items() if True]
-    dfs = [d for d in dfs if not d.empty]
-    if not dfs:
-        raise ValueError("No macro data fetched. Check internet connection.")
-    macro_df = reduce(lambda l, r: pd.merge(l, r, on="year", how="outer"), dfs)
+def ingest_macro_indicators(engine=None):
+    """Load US macro indicators (2000-2014) into ``macro_indicators``.
+
+    Set ``MACRO_CSV`` to a saved CSV (columns: year + indicator names) to run
+    offline, e.g. in CI or behind a firewall that blocks api.worldbank.org.
+    """
+    cached = os.getenv("MACRO_CSV")
+    if cached:
+        logger.info(f"[SOURCE 2] Loading macro indicators from {cached}")
+        macro_df = pd.read_csv(cached)
+    else:
+        logger.info("[SOURCE 2] Fetching macroeconomic indicators from World Bank API")
+        dfs = [fetch_indicator(code, name) for code, name in INDICATORS.items()]
+        dfs = [d for d in dfs if not d.empty]
+        if not dfs:
+            raise ValueError("No macro data fetched. Check internet connection or set MACRO_CSV.")
+        macro_df = reduce(lambda left, right: pd.merge(left, right, on="year", how="outer"), dfs)
     macro_df = macro_df.sort_values("year").reset_index(drop=True)
     macro_df = macro_df.ffill().bfill()
     logger.info(f"Macro data shape: {macro_df.shape}")
     logger.info(f"\n{macro_df.to_string()}")
-    engine = get_engine()
+    engine = engine or get_engine()
     macro_df.to_sql("macro_indicators", engine, if_exists="replace", index=False)
     logger.info(f"[OK] macro_indicators: {get_row_count(engine, 'macro_indicators')} rows loaded")
     return macro_df

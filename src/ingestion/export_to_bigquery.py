@@ -6,12 +6,14 @@ BigQuery enables scalable SQL analytics and potential integration with
 Looker Studio, Vertex AI, and other GCP services.
 """
 
-import os
 import logging
+import os
+
 import pandas as pd
+from dotenv import load_dotenv
 from google.cloud import bigquery
 from google.oauth2 import service_account
-from dotenv import load_dotenv
+
 from src.utils.db import get_engine
 
 load_dotenv()
@@ -145,10 +147,10 @@ def export_to_bigquery():
 
     logger.info("\n" + "="*60)
     logger.info("[OK] BigQuery export complete")
-    logger.info(f"  Tables created:")
+    logger.info("  Tables created:")
     logger.info(f"  - {project_id}.{dataset_id}.credit_features")
     logger.info(f"  - {project_id}.{dataset_id}.credit_summary_by_age_group")
-    logger.info(f"  View in console:")
+    logger.info("  View in console:")
     logger.info(f"  https://console.cloud.google.com/bigquery?project={project_id}")
     logger.info("="*60)
 
