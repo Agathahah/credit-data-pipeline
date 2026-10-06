@@ -1,243 +1,122 @@
-# End-to-End Data Engineering Pipeline for Credit Risk ML
+# Credit Data Pipeline
 
-### *Because a model is only as good as the data pipeline that feeds it*
+A five-stage ETL and modelling pipeline for credit default prediction: CSV and a REST API go into PostgreSQL, every stage writes its own table, and the last stage trains and evaluates a model with a baseline for comparison.
 
-![Python](https://img.shields.io/badge/Python-3.10-blue)
-![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791)
-![XGBoost](https://img.shields.io/badge/XGBoost-2.0.3-orange)
-![Docker](https://img.shields.io/badge/Docker-Containerized-2496ED)
-![Kubernetes](https://img.shields.io/badge/Kubernetes-Deployed-326CE5)
-![Status](https://img.shields.io/badge/Status-Complete-brightgreen)
+![Python](https://img.shields.io/badge/Python-3.12-blue)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)
+![Tests](https://img.shields.io/badge/tests-pytest-green)
+![Status](https://img.shields.io/badge/status-learning%20project-lightgrey)
 
----
+## What this project is (and is not)
 
-## The Problem
+It is a portfolio project that shows how raw data moves through staged, auditable tables into a model, and how to run the same code locally, in Docker and in a local Kubernetes cluster.
 
-Most credit risk ML projects start at the modeling step.
+It is not a production credit system. The dataset is a public Kaggle snapshot with no application dates, the model is not served behind an API, and there is no monitoring of live traffic.
 
-They download a CSV, split it into train/test, fit a model, report AUC, and call it done.
+## Pipeline
 
-That is not how credit risk works in a real institution.
-
-In reality, a credit analyst's biggest challenge is not *which model to use* — it is *where the data comes from, how clean it is, how it gets combined from multiple sources, and whether the features being fed into the model actually reflect the economic reality at the time of the loan application.*
-
-A model trained only on borrower-level data will miss the macro context entirely. A borrower who looked creditworthy in 2006 looked very different in 2008 — not because their profile changed, but because the lending interest rate and unemployment rate changed dramatically around them.
-
-**This project builds the data infrastructure that makes macro-aware credit modeling possible.**
-
----
-
-## My Hypothesis
-
-Most data engineering tutorials show you how to move data from A to B.
-
-That is not enough.
-
-A credit risk data pipeline should do three things that most pipelines skip:
-
-1. **Integrate heterogeneous sources** — not just one CSV, but structured data combined with external economic indicators from a live API
-2. **Preserve auditability at every stage** — each transformation writes to its own database table so you can inspect exactly what changed and where
-3. **Engineer features that reflect economic context** — a borrower's debt ratio means something different when the lending interest rate is 3% vs 9%
-
-If your pipeline cannot do all three, your model is operating with incomplete information.
-
----
-
-## Results
-
-### Pipeline Performance
-
-| Stage | Output Table | Rows | Notes |
-| --- | --- | --- | --- |
-| Ingestion (CSV) | credit_raw | 150,000 | Raw Kaggle data, no transformation |
-| Ingestion (API) | macro_indicators | 15 | World Bank: 4 indicators x 15 years |
-| Transform | credit_cleaned | 149,391 | After dedup, invalid age removal, winsorizing |
-| Enrichment | credit_enriched | 149,391 | JOIN with macro indicators on data_year |
-| Feature Store | credit_features | 149,391 | 31 features across 5 categories |
-| Cloud Export | BigQuery: credit_features | 149,391 | Exported to GCP for cloud analytics |
-| Cloud Export | BigQuery: credit_summary_by_age_group | 4 | Aggregated analytics table |
-
-### Model Performance (trained on feature store output)
-
-| Metric | Value | Notes |
-| --- | --- | --- |
-| ROC-AUC | 0.8691 | Strong discrimination on 6.7% default rate |
-| Average Precision | 0.4132 | 6.2x better than random classifier |
-| Training rows | 119,501 | 80/20 stratified split |
-| Features used | 31 | Including 3 macro-credit interaction features |
-
-### Deployment Performance
-
-| Environment | ROC-AUC | Total Time | Records |
-| --- | --- | --- | --- |
-| Local (venv) | 0.8691 | ~28s | 149,377 |
-| Docker Compose | 0.8690 | 30.1s | 149,377 |
-| Kubernetes (minikube) | 0.8690 | 32.7s | 149,377 |
-
-Results are consistent across all three environments — confirming that containerization introduces no data or model drift.
-
----
-
-## Key Findings
-
-**Finding 1 — Macro context changes what a borrower's debt ratio means**
-
-A debt ratio of 0.4 is very different when the lending interest rate is 3.25% versus 8.5%. Without the World Bank API integration, this distinction is invisible to the model. The feature `interest_adjusted_debt` captures this — and it ranks in the top 10 features by importance.
-
-**Finding 2 — The most valuable features are the ones you have to build, not the ones you are given**
-
-The three macro-credit interaction features (`interest_adjusted_debt`, `rate_util_risk`, `macro_stress_flag`) required integrating a second data source via API. None of them exist in the original dataset. Together they improve model AUC meaningfully compared to a baseline trained only on raw borrower features.
-
-**Finding 3 — Data quality issues are not evenly distributed**
-
-`monthly_income` has 19.8% missing values. `num_dependents` has 2.6%. These are not random — they correlate with borrower age and employment type. Median imputation is sufficient here, but any production pipeline should flag these borrowers as having higher prediction uncertainty.
-
-**Finding 4 — Multi-stage pipelines catch errors that single-stage pipelines hide**
-
-By writing to a separate table at each stage, we can inspect exactly what was removed at each step. 609 rows were dropped in the transform stage — 491 for invalid age, 118 for duplicates. In a single-stage pipeline, these disappear silently. Here they are auditable.
-
-**Finding 5 — The pipeline design matters as much as the model**
-
-A data engineer who can only run `df = pd.read_csv()` is not useful in production. The pipeline here uses connection pooling, chunked writes for 150K rows, staged PostgreSQL tables, and a master runner that logs every stage to a file. These are not academic choices — they are what separates a notebook from a system.
-
----
-
-## What Makes This Different
-
-| Typical ML Pipeline | This Pipeline |
-| --- | --- |
-| One data source (CSV) | Two sources: CSV + World Bank REST API |
-| Single dataframe in memory | 5 staged PostgreSQL tables |
-| No quality reporting | Explicit quality checks at each stage |
-| Features from raw columns only | Macro-credit interaction features from API |
-| Train and done | Auditable, reproducible, restartable at any stage |
-| Local storage only | PostgreSQL (local) + BigQuery (cloud analytics layer) |
-| Runs only on local machine | Containerized — runs on Docker and Kubernetes |
-
----
-
-## Deployment
-
-This pipeline is fully containerized and has been tested across three environments without any change to source code or model results.
-
-### Option 1 — Docker Compose (recommended for local development)
-
-```bash
-# Clone repo
-git clone https://github.com/Agathahah/credit-data-pipeline.git
-cd credit-data-pipeline
-
-# Setup environment file
-cp .env.example .env
-
-# Place dataset
-# Download cs-training.csv from Kaggle and put it at data/raw/cs-training.csv
-
-# Build and run
-make build
-make db-only        # terminal 1: start PostgreSQL
-make pipeline-only  # terminal 2: run pipeline
+```
+data/raw/cs-training.csv ──► credit_raw ──► credit_cleaned ──► credit_enriched ──► credit_features ──► model + docs/
+World Bank API ───────────► macro_indicators ─────┘
 ```
 
-The `docker-compose.yml` orchestrates two services: a PostgreSQL container and the pipeline container. The pipeline uses a `depends_on` health check to ensure the database is fully ready before execution begins — the same reliability guarantee required in production ML systems.
+| Stage | Table | Rows (last run) | What happens |
+|---|---|---:|---|
+| 1. Ingestion | `credit_raw` | 150,000 | Kaggle CSV loaded as-is, columns renamed |
+| 1. Ingestion | `macro_indicators` | 15 | US inflation, lending rate, GDP growth, unemployment 2000–2014 |
+| 2. Transform | `credit_cleaned` | 149,377 | 609 duplicates and 14 invalid ages removed; 225 rows with past-due codes 96/98 set to missing and flagged |
+| 3. Enrich | `credit_enriched` | 149,377 | Macro indicators joined on `data_year` |
+| 4. Features | `credit_features` | 149,377 | 15 row-wise engineered features |
+| 5. Training | `docs/`, `models/` | 89,625 / 29,876 / 29,876 | Train / validation / test, stratified |
 
-### Option 2 — Kubernetes (minikube for local cluster testing)
+Row counts come from `docs/pipeline_report.json`, which `run_pipeline.py` writes on every run.
+
+## Results (test split, last run)
+
+| Model | ROC-AUC | PR-AUC | KS | Defaults caught in top 10% of scores |
+|---|---:|---:|---:|---:|
+| Logistic regression (baseline) | 0.861 | 0.379 | 0.569 | 54.1% |
+| XGBoost | **0.866** | **0.412** | **0.578** | **55.4%** |
+
+Default rate is 6.7%, so a random ranking has PR-AUC ≈ 0.067. At the decision threshold chosen on the validation split (0.21), XGBoost flags 2,539 of 29,876 test borrowers with 39.9% precision and 50.6% recall. Full numbers, including confusion matrices and library versions, are in [`docs/model_metrics.json`](docs/model_metrics.json).
+
+**Reading the result:** XGBoost beats the baseline mostly on PR-AUC (+0.033). ROC-AUC differs by only 0.005, which says most of the signal is captured by the original ten columns and that the gain from boosting is real but modest.
+
+## Audit, October 2026: what changed and why
+
+I re-ran this project from a clean environment and found problems in the first version. They are listed here because finding them was the most useful part of the project.
+
+| # | Problem in v1 | Evidence | Fix |
+|---|---|---|---|
+| 1 | **Macro features carried no information.** The dataset has no dates, so every row got `data_year = 2010` and identical macro values. `interest_adjusted_debt` was `monthly_debt × 1.0325`, perfectly correlated (r = 1.0) with `monthly_debt`. The README claimed these features improved the model. | `enrichment` block in `docs/pipeline_report.json`: every macro column has 1 distinct value. Removing all 7 macro columns changed test ROC-AUC by 0.0005 (0.8685 → 0.8680). | Macro features are excluded from the model and the limitation is logged. The macro stage stays as an integration example. A dataset with application dates is needed for macro features to matter. |
+| 2 | **Early stopping used the test set.** | `eval_set=[(X_test, y_test)]` with `early_stopping_rounds` | Separate validation split for early stopping and threshold choice. Test set is used once. |
+| 3 | **Statistics learned before the split.** Median imputation and 99th-percentile caps were fitted on all rows. | `transform_credit.py` v1 | Cleaning is now rule-based only. Missing values stay missing (XGBoost handles them; the baseline imputes inside its own pipeline). |
+| 4 | **No baseline.** A single AUC had nothing to be compared with. | — | Logistic regression trained on the same split. |
+| 5 | **Docker and local results differed** (0.8691 vs 0.8690), explained as floating point. | `requirements_docker.txt` pinned XGBoost 2.0.3 and NumPy 1.26; local used XGBoost 3.2 and NumPy 2.4. | One `requirements.txt` for every environment. |
+| 6 | **Kubernetes ran a batch job as a Deployment** with `restartPolicy: Always`, so the pipeline would restart forever. The Namespace was declared after objects that use it. Database password was committed in base64. | `k8s/` v1 | `Job` with `OnFailure`, namespace applied first, Secret created with `kubectl` (see `k8s/README.md`). |
+| 7 | **Password hard-coded** in `Dockerfile` and `docker-compose.yml`. | — | Read from `.env`, which is git-ignored. Container runs as a non-root user. |
+| 8 | **README numbers did not match the code** (e.g. "491 invalid ages", 149,391 cleaned rows). | Actual: 14 invalid ages, 149,377 rows. | README numbers are now copied from `docs/pipeline_report.json` and `docs/model_metrics.json`. |
+| 9 | **No tests, no CI.** | — | 10 pytest tests on synthetic data, including an end-to-end run on SQLite; GitHub Actions runs lint, tests and a Docker build. |
+
+## How to run
+
+You need the Kaggle file `cs-training.csv` from [Give Me Some Credit](https://www.kaggle.com/c/GiveMeSomeCredit) in `data/raw/`.
+
+### 1. Tests only (no database, no Docker, about 5 seconds)
 
 ```bash
-# Start minikube cluster
-minikube start --cpus=4 --memory=4096 --driver=docker
-
-# Point Docker CLI to minikube registry
-eval $(minikube docker-env)
-
-# Build image inside minikube
-docker build -t agathahah/credit-data-pipeline:latest .
-
-# Deploy
-kubectl apply -f k8s/service.yaml
-kubectl apply -f k8s/deployment.yaml
-
-# Monitor
-kubectl get pods -n ml-production
-kubectl logs -f deployment/credit-pipeline -n ml-production
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements-dev.txt
+python -m pytest -q          # 10 passed
+ruff check src tests run_pipeline.py
 ```
 
-The Kubernetes configuration includes:
-- **Namespace isolation** (`ml-production`) separating this workload from other cluster tenants
-- **Init container** that blocks pipeline startup until PostgreSQL passes its health check
-- **Resource limits** (CPU: 250m–1000m, Memory: 512Mi–2Gi) preventing resource monopolization
-- **PersistentVolumeClaims** for data and model artifact storage, surviving pod restarts
-- **Secret management** for database credentials, replacing plaintext environment variables
-
-### Option 3 — Local virtualenv
+### 2. Full pipeline with Docker Compose
 
 ```bash
-python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
+cp .env.example .env         # edit DB_PASSWORD
+docker compose up --build    # PostgreSQL + one pipeline run, then exits
+cat docs/pipeline_report.json
+```
+
+### 3. Full pipeline against your own database
+
+```bash
+cp .env.example .env         # point DB_* at your PostgreSQL, or set DATABASE_URL
 python run_pipeline.py
 ```
 
----
+Behind a firewall that blocks `api.worldbank.org`, export the four indicators to a CSV (`year,inflation_rate,lending_interest_rate,gdp_growth_rate,unemployment_rate`) and set `MACRO_CSV=path/to/file.csv`.
 
-## Project Structure
+### 4. Local Kubernetes
+
+See [`k8s/README.md`](k8s/README.md).
+
+## Project structure
 
 ```
-credit-data-pipeline/
-├── src/
-│   ├── ingestion/
-│   │   ├── ingest_credit.py        # SOURCE 1: CSV → PostgreSQL
-│   │   └── ingest_macro.py         # SOURCE 2: World Bank API → PostgreSQL
-│   ├── transform/
-│   │   ├── transform_credit.py     # Clean and quality check
-│   │   └── enrich_with_macro.py    # JOIN credit and macro data
-│   ├── features/
-│   │   └── build_features.py       # 18 engineered features
-│   ├── models/
-│   │   └── train.py                # XGBoost training and evaluation
-│   └── utils/
-│       └── db.py                   # DB connection helper
-├── k8s/
-│   ├── deployment.yaml             # Pod spec, resource limits, init container
-│   └── service.yaml                # PostgreSQL service, PVCs, secrets, namespace
-├── docs/
-│   ├── roc_curve.png
-│   ├── feature_importance.png
-│   ├── confusion_matrix.png
-│   └── model_metrics.json
-├── Dockerfile                      # Python 3.10-slim, production dependencies only
-├── docker-compose.yml              # Pipeline + PostgreSQL orchestration
-├── requirements_docker.txt         # Production dependencies (no Jupyter/dev tools)
-├── Makefile                        # build / run / stop / logs / shell shortcuts
-├── init.sql                        # PostgreSQL initialization script
-├── run_pipeline.py                 # Run all 5 stages end-to-end
-└── requirements.txt
+src/
+  ingestion/   ingest_credit.py, ingest_macro.py, export_to_bigquery.py (optional)
+  transform/   transform_credit.py (rules only), enrich_with_macro.py
+  features/    build_features.py (row-wise formulas)
+  models/      train.py (split, baseline, XGBoost, metrics, plots)
+  utils/       db.py (DATABASE_URL or DB_* variables)
+tests/         synthetic fixtures, unit tests, end-to-end SQLite test
+k8s/           namespace, postgres, job
+docs/          model_metrics.json, pipeline_report.json, plots
 ```
 
----
+## Limitations and next steps
 
-## Evaluation Plots
-
-![ROC Curve](docs/roc_curve.png)
-![Feature Importance](docs/feature_importance.png)
-![Confusion Matrix](docs/confusion_matrix.png)
-
----
-
-## Tech Stack
-
-`Python 3.10` · `PostgreSQL` · `SQLAlchemy` · `Google BigQuery` · `XGBoost` · `World Bank REST API` · `pandas` · `scikit-learn` · `Docker` · `Kubernetes` · `matplotlib` · `seaborn`
-
----
+- The dataset is a single snapshot. A dataset with application dates would allow a time-based split and meaningful macro features.
+- Probabilities from XGBoost are not calibrated. Calibration is needed before scores are read as default probabilities.
+- The model is trained but not served. A FastAPI scoring endpoint with input validation is the next step.
+- The BigQuery export (`requirements-bigquery.txt`) needs a service-account key and is not covered by tests.
 
 ## Dataset
 
-[Give Me Some Credit](https://www.kaggle.com/c/GiveMeSomeCredit) — Kaggle
-150,000 borrower records · 11 features · **6.7% default rate**
-
-Macroeconomic indicators from [World Bank Open Data API](https://data.worldbank.org/):
-inflation rate · lending interest rate · GDP growth rate · unemployment rate
+[Give Me Some Credit](https://www.kaggle.com/c/GiveMeSomeCredit), Kaggle: 150,000 borrowers, 10 features, 6.7% serious delinquency within two years. Macro indicators: [World Bank Open Data](https://data.worldbank.org/).
 
 ---
 
-*Author: Agatha Ulina Silalahi*
-*[LinkedIn](https://www.linkedin.com/in/agatha-silalahi-722507215/) · [Kaggle](https://www.kaggle.com/agathasilalahi) · [GitHub](https://github.com/Agathahah)*
+Agatha Ulina Silalahi · [LinkedIn](https://www.linkedin.com/in/agatha-silalahi-722507215/) · [GitHub](https://github.com/Agathahah)
