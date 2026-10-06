@@ -1,79 +1,28 @@
-# ============================================================
-# Makefile — shortcut untuk perintah Docker yang sering dipakai
-# Cara pakai: ketik 'make <target>' di terminal
-# Contoh: make build, make run, make logs
-# ============================================================
+.PHONY: install test lint run docker-up docker-down k8s-apply clean help
 
-.PHONY: build run stop logs clean db-only pipeline-only ps help
+install:      ## Create .venv and install dev dependencies
+	python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 
-# Build Docker image dari Dockerfile
-build:
-	docker-compose build
+test:         ## Unit + end-to-end tests on synthetic data (SQLite, no Docker)
+	.venv/bin/python -m pytest -q
 
-# Jalankan full stack (postgres + pipeline)
-run:
-	docker-compose up
+lint:         ## Static checks
+	.venv/bin/ruff check src tests run_pipeline.py
 
-# Jalankan di background (detached mode)
-run-detached:
-	docker-compose up -d
+run:          ## Run the pipeline against the database in .env
+	.venv/bin/python run_pipeline.py
 
-# Hanya jalankan PostgreSQL (untuk development)
-db-only:
-	docker-compose up postgres
+docker-up:    ## Build and run PostgreSQL + pipeline once
+	docker compose up --build
 
-# Hanya jalankan pipeline (PostgreSQL harus sudah jalan)
-pipeline-only:
-	docker-compose up pipeline
+docker-down:  ## Stop containers (keeps the database volume)
+	docker compose down
 
-# Lihat logs semua service
-logs:
-	docker-compose logs -f
+k8s-apply:    ## Apply namespace, postgres and the pipeline Job (see k8s/README.md)
+	kubectl apply -f k8s/namespace.yaml && kubectl apply -f k8s/postgres.yaml && kubectl apply -f k8s/job.yaml
 
-# Lihat logs hanya pipeline
-logs-pipeline:
-	docker-compose logs -f pipeline
+clean:        ## Remove caches
+	rm -rf .pytest_cache .ruff_cache **/__pycache__
 
-# Stop semua container
-stop:
-	docker-compose down
-
-# Stop dan hapus semua data (HATI-HATI: data PostgreSQL ikut terhapus!)
-clean:
-	docker-compose down -v
-	docker rmi credit-data-pipeline-docker_pipeline 2>/dev/null || true
-
-# Lihat status container yang sedang berjalan
-ps:
-	docker-compose ps
-
-# Masuk ke dalam container pipeline (untuk debugging)
-shell:
-	docker-compose exec pipeline /bin/bash
-
-# Masuk ke PostgreSQL via psql (untuk debugging database)
-psql:
-	docker-compose exec postgres psql -U dataengineer -d credit_risk_db
-
-# Test koneksi database dari dalam pipeline container
-test-db:
-	docker-compose exec pipeline python -c "\
-		from src.utils.db import get_engine; \
-		engine = get_engine(); \
-		print('✅ Database connection OK:', engine.url)"
-
-# Help
 help:
-	@echo "Perintah yang tersedia:"
-	@echo "  make build          - Build Docker image"
-	@echo "  make run            - Jalankan pipeline lengkap"
-	@echo "  make run-detached   - Jalankan di background"
-	@echo "  make db-only        - Hanya jalankan PostgreSQL"
-	@echo "  make logs           - Lihat semua logs"
-	@echo "  make logs-pipeline  - Lihat logs pipeline saja"
-	@echo "  make stop           - Stop semua container"
-	@echo "  make clean          - Stop dan hapus semua data"
-	@echo "  make ps             - Status container"
-	@echo "  make shell          - Masuk ke container pipeline"
-	@echo "  make psql           - Masuk ke PostgreSQL"
-	@echo "  make test-db        - Test koneksi database"
+	@grep -E '^[a-zA-Z0-9_-]+:.*##' Makefile | awk 'BEGIN{FS=":.*## "}{printf "%-12s %s\n",$$1,$$2}'

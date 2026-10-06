@@ -28,3 +28,4 @@ models/*.pkl
 credentials/
 *.json
 !docs/model_metrics.json
+!docs/pipeline_report.json

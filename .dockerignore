@@ -40,8 +40,8 @@ __pycache__/
 Thumbs.db
 
 # Test files
-tests/
-pytest.ini
+# tests are not needed in the image
+
 .pytest_cache/
 
 # IDE
