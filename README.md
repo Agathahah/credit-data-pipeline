@@ -35,12 +35,16 @@ Row counts come from `docs/pipeline_report.json`, which `run_pipeline.py` writes
 
 | Model | ROC-AUC | PR-AUC | KS | Defaults caught in top 10% of scores |
 |---|---:|---:|---:|---:|
-| Logistic regression (baseline) | 0.861 | 0.379 | 0.569 | 54.1% |
-| XGBoost | **0.866** | **0.412** | **0.578** | **55.4%** |
+| Logistic regression (baseline) | 0.857 | 0.360 | 0.561 | 53.0% |
+| XGBoost | **0.866** | **0.394** | **0.579** | **54.5%** |
 
-Default rate is 6.7%, so a random ranking has PR-AUC ≈ 0.067. At the decision threshold chosen on the validation split (0.21), XGBoost flags 2,539 of 29,876 test borrowers with 39.9% precision and 50.6% recall. Full numbers, including confusion matrices and library versions, are in [`docs/model_metrics.json`](docs/model_metrics.json).
+Default rate is 6.7%, so a random ranking has PR-AUC ≈ 0.067. At the decision threshold chosen on the validation split (0.23), XGBoost flags 2,325 of 29,876 test borrowers with 41.2% precision and 47.8% recall. Full numbers, including confusion matrices and library versions, are in [`docs/model_metrics.json`](docs/model_metrics.json).
 
-**Reading the result:** XGBoost beats the baseline mostly on PR-AUC (+0.033). ROC-AUC differs by only 0.005, which says most of the signal is captured by the original ten columns and that the gain from boosting is real but modest.
+**Reading the result:** XGBoost beats the baseline mostly on PR-AUC (+0.034). ROC-AUC differs by only 0.009, which says most of the signal is captured by the original ten columns and that the gain from boosting is real but modest.
+
+**How stable is this?** Across three different random splits seen during the audit, XGBoost PR-AUC ranged from 0.394 to 0.418 and ROC-AUC from 0.866 to 0.868. Differences between models smaller than about 0.02 PR-AUC should not be read as real on a single split.
+
+The numbers are identical whether the pipeline runs on PostgreSQL or SQLite: rows are put in a canonical order before the seeded split (see audit item 10).
 
 ## Audit, October 2026: what changed and why
 
@@ -56,7 +60,8 @@ I re-ran this project from a clean environment and found problems in the first v
 | 6 | **Kubernetes ran a batch job as a Deployment** with `restartPolicy: Always`, so the pipeline would restart forever. The Namespace was declared after objects that use it. Database password was committed in base64. | `k8s/` v1 | `Job` with `OnFailure`, namespace applied first, Secret created with `kubectl` (see `k8s/README.md`). |
 | 7 | **Password hard-coded** in `Dockerfile` and `docker-compose.yml`. | — | Read from `.env`, which is git-ignored. Container runs as a non-root user. |
 | 8 | **README numbers did not match the code** (e.g. "491 invalid ages", 149,391 cleaned rows). | Actual: 14 invalid ages, 149,377 rows. | README numbers are now copied from `docs/pipeline_report.json` and `docs/model_metrics.json`. |
-| 9 | **No tests, no CI.** | — | 10 pytest tests on synthetic data, including an end-to-end run on SQLite; GitHub Actions runs lint, tests and a Docker build. |
+| 9 | **No tests, no CI.** | — | 11 pytest tests on synthetic data, including an end-to-end run on SQLite; GitHub Actions runs lint, tests and a Docker build. |
+| 10 | **The split depended on database row order.** `SELECT *` without `ORDER BY` returns rows in an engine-specific order, so the same seed gave different test sets on PostgreSQL and SQLite (PR-AUC 0.412 vs 0.418). | Two runs on identical data, two backends. | `canonical_order()` sorts rows by all columns before splitting; a test checks that shuffled input gives the same split. Both backends now produce identical `docs/model_metrics.json`. |
 
 ## How to run
 
@@ -67,7 +72,7 @@ You need the Kaggle file `cs-training.csv` from [Give Me Some Credit](https://ww
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
-python -m pytest -q          # 10 passed
+python -m pytest -q          # 11 passed
 ruff check src tests run_pipeline.py
 ```
 
@@ -88,7 +93,15 @@ python run_pipeline.py
 
 Behind a firewall that blocks `api.worldbank.org`, export the four indicators to a CSV (`year,inflation_rate,lending_interest_rate,gdp_growth_rate,unemployment_rate`) and set `MACRO_CSV=path/to/file.csv`.
 
-### 4. Local Kubernetes
+### 4. Full pipeline on SQLite (no Docker, no PostgreSQL, about 20 seconds)
+
+```bash
+DATABASE_URL=sqlite:///data/pipeline.db python run_pipeline.py
+```
+
+Produces the same `docs/model_metrics.json` as the PostgreSQL run.
+
+### 5. Local Kubernetes
 
 See [`k8s/README.md`](k8s/README.md).
 

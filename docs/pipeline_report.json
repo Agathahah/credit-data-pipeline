@@ -46,14 +46,14 @@
     }
   },
   "xgboost_test": {
-    "roc_auc": 0.8656,
-    "pr_auc": 0.4115,
-    "ks": 0.5784
+    "roc_auc": 0.866,
+    "pr_auc": 0.3938,
+    "ks": 0.5789
   },
   "baseline_test": {
-    "roc_auc": 0.8605,
-    "pr_auc": 0.3787,
-    "ks": 0.5691
+    "roc_auc": 0.8569,
+    "pr_auc": 0.3598,
+    "ks": 0.5607
   },
-  "seconds": 50.9
+  "seconds": 58.8
 }

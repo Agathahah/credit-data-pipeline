@@ -47,3 +47,18 @@ def test_training_writes_artifacts_and_beats_random(raw_credit, macro, tmp_path)
     assert metrics["xgboost"]["roc_auc"] > 0.6
     assert metrics["xgboost"]["pr_auc"] > metrics["default_rate"]
     assert (tmp_path / "xgb_credit_model.json").exists()
+
+
+def test_split_does_not_depend_on_row_order():
+    import numpy as np
+    import pandas as pd
+
+    from src.models.train import canonical_order, split_data
+
+    rng = np.random.default_rng(0)
+    df = pd.DataFrame({"a": rng.normal(size=400), "b": rng.integers(0, 5, 400), "y": rng.integers(0, 2, 400)})
+    df.loc[::17, "a"] = np.nan
+    shuffled = df.sample(frac=1, random_state=1)
+    s1 = split_data(*(lambda d: (d[["a", "b"]], d["y"]))(canonical_order(df)))
+    s2 = split_data(*(lambda d: (d[["a", "b"]], d["y"]))(canonical_order(shuffled)))
+    pd.testing.assert_frame_equal(s1.X_test.reset_index(drop=True), s2.X_test.reset_index(drop=True))

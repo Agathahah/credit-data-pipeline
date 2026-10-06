@@ -208,12 +208,23 @@ def train_from_frame(df: pd.DataFrame, docs_dir: str = "docs", models_dir: str =
     return model, metrics
 
 
+def canonical_order(df: pd.DataFrame) -> pd.DataFrame:
+    """Sort rows by every column so the random split does not depend on database row order.
+
+    ``SELECT *`` without ORDER BY returns rows in an engine-specific order (SQLite and
+    PostgreSQL differ), and ``train_test_split`` with a fixed seed is only reproducible
+    when its input order is fixed. Rows are unique after de-duplication, so this order is total.
+    """
+    cols = sorted(df.columns)
+    return df.sort_values(cols, kind="mergesort", na_position="last").reset_index(drop=True)
+
+
 def train(engine=None) -> tuple[xgb.XGBClassifier, dict]:
     """Load ``credit_features`` from the database and train."""
     from src.utils.db import get_engine
 
     engine = engine or get_engine()
-    df = pd.read_sql("SELECT * FROM credit_features", engine)
+    df = canonical_order(pd.read_sql("SELECT * FROM credit_features", engine))
     logger.info("Loaded %d rows from credit_features", len(df))
     return train_from_frame(df)
 
