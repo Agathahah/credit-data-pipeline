@@ -13,7 +13,11 @@ services:
     ports:
       - "5433:5432"   # host 5433 avoids clashing with a local PostgreSQL
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      # Volume name carries the major version: a data directory created by another
+      # PostgreSQL major version cannot be opened ("database files are incompatible
+      # with server"). v1 of this project used postgres:14 with a volume called
+      # postgres_data; a new name means that old volume is never mounted here.
+      - pgdata16:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 5s
@@ -36,4 +40,4 @@ services:
       - ./models:/app/models
 
 volumes:
-  postgres_data:
+  pgdata16:

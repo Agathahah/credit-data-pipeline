@@ -84,6 +84,8 @@ docker compose up --build    # PostgreSQL + one pipeline run, then exits
 cat docs/pipeline_report.json
 ```
 
+If you ran version 1 of this project before, Docker still holds its PostgreSQL 14 volume. The compose file now uses a volume named `pgdata16`, so the old one is never mounted; remove it with `docker volume rm credit-data-pipeline_postgres_data`. Mounting a data directory from another major version fails with `database files are incompatible with server`.
+
 ### 3. Full pipeline against your own database
 
 ```bash
