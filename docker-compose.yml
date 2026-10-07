@@ -1,94 +1,43 @@
-# ============================================================
-# docker-compose.yml
-# Menjalankan DUA service sekaligus:
-#   1. postgres  — database server
-#   2. pipeline  — credit-data-pipeline app kita
-#
-# Cara pakai:
-#   docker-compose up           → jalankan semua
-#   docker-compose up postgres  → hanya database
-#   docker-compose logs pipeline → lihat log pipeline
-# ============================================================
-
-version: '3.8'
-
+# Two services: PostgreSQL and the one-shot pipeline.
+# Usage:
+#   cp .env.example .env        # then edit the password
+#   docker compose up --build   # runs the pipeline once and exits
 services:
-
-  # ============================================================
-  # SERVICE 1: PostgreSQL Database
-  # ============================================================
   postgres:
-    image: postgres:14-alpine          # alpine = image lebih kecil
-    container_name: credit_postgres
+    image: postgres:16-alpine
     restart: unless-stopped
-
     environment:
-      POSTGRES_DB: credit_risk_db
-      POSTGRES_USER: dataengineer
-      POSTGRES_PASSWORD: de_password123
-
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     ports:
-      - "5433:5432"                    # host:container (pakai 5433 di host
-                                       # agar tidak bentrok dgn PostgreSQL lokal)
+      - "5433:5432"   # host 5433 avoids clashing with a local PostgreSQL
     volumes:
-      - postgres_data:/var/lib/postgresql/data   # data persisten
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql  # init script
-
+      # Volume name carries the major version: a data directory created by another
+      # PostgreSQL major version cannot be opened ("database files are incompatible
+      # with server"). v1 of this project used postgres:14 with a volume called
+      # postgres_data; a new name means that old volume is never mounted here.
+      - pgdata16:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U dataengineer -d credit_risk_db"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
-  # ============================================================
-  # SERVICE 2: Credit Data Pipeline
-  # ============================================================
   pipeline:
-    build:
-      context: .
-      dockerfile: Dockerfile
-
-    container_name: credit_pipeline
-    restart: "no"                      # pipeline dijalankan sekali, tidak restart
-
+    build: .
+    restart: "no"
+    env_file: .env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
     depends_on:
       postgres:
-        condition: service_healthy     # tunggu postgres SEHAT dulu baru jalan
-
-    environment:
-      DB_HOST: postgres                # nama service = hostname di Docker network
-      DB_PORT: 5432
-      DB_NAME: credit_risk_db
-      DB_USER: dataengineer
-      DB_PASSWORD: de_password123
-
+        condition: service_healthy
     volumes:
-      - ./data:/app/data               # mount folder data dari host ke container
-      - ./docs:/app/docs               # mount folder docs (untuk simpan plot)
-      - ./src:/app/src                 # mount src (untuk development: edit tanpa rebuild)
+      - ./data:/app/data
+      - ./docs:/app/docs
+      - ./models:/app/models
 
-    # Override CMD jika mau jalankan stage tertentu saja:
-    # command: python src/ingestion/ingest_credit.py
-
-  # ============================================================
-  # SERVICE 3 (OPSIONAL): pgAdmin — GUI untuk lihat database
-  # Uncomment kalau mau pakai
-  # ============================================================
-  # pgadmin:
-  #   image: dpage/pgadmin4
-  #   container_name: credit_pgadmin
-  #   environment:
-  #     PGADMIN_DEFAULT_EMAIL: agatha@example.com
-  #     PGADMIN_DEFAULT_PASSWORD: admin123
-  #   ports:
-  #     - "8080:80"
-  #   depends_on:
-  #     - postgres
-
-# ============================================================
-# Volume: tempat data PostgreSQL disimpan secara persisten
-# Kalau container dihapus, data tetap ada di volume ini
-# ============================================================
 volumes:
-  postgres_data:
-    driver: local
+  pgdata16:

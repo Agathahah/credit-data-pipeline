@@ -1,5 +1,6 @@
 # Environment
 venv/
+.venv/
 .env
 
 # Python
@@ -14,6 +15,7 @@ data/raw/
 data/processed/
 *.csv
 *.zip
+*.db
 
 # Model binary
 models/*.pkl
@@ -28,3 +30,4 @@ models/*.pkl
 credentials/
 *.json
 !docs/model_metrics.json
+!docs/pipeline_report.json

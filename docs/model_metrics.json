@@ -1,9 +1,12 @@
 {
-  "roc_auc": 0.869,
-  "average_precision": 0.4133,
-  "n_train": 119501,
-  "n_test": 29876,
-  "n_features": 31,
+  "dataset": "Give Me Some Credit (Kaggle), single snapshot, no application dates",
+  "rows": {
+    "train": 89625,
+    "validation": 29876,
+    "test": 29876
+  },
+  "default_rate": 0.067,
+  "n_features": 25,
   "features_used": [
     "revolving_util",
     "age",
@@ -22,20 +25,62 @@
     "monthly_debt",
     "disposable_income",
     "income_per_dependent",
-    "low_income_flag",
     "age_util_interaction",
     "credit_diversity",
     "has_real_estate_loan",
     "log_monthly_income",
     "log_revolving_util",
     "log_monthly_debt",
+    "income_missing_flag",
+    "past_due_sentinel_flag"
+  ],
+  "constant_features_dropped": [],
+  "macro_features_excluded": [
     "interest_adjusted_debt",
-    "rate_util_risk",
-    "macro_stress_flag",
     "inflation_rate",
     "lending_interest_rate",
     "gdp_growth_rate",
     "unemployment_rate"
   ],
-  "default_rate": 0.067
+  "logistic_regression_baseline": {
+    "roc_auc": 0.8569,
+    "pr_auc": 0.3598,
+    "ks": 0.5607,
+    "brier": 0.1423,
+    "base_rate": 0.067,
+    "threshold": 0.7579,
+    "precision_at_threshold": 0.3945,
+    "recall_at_threshold": 0.4705,
+    "confusion_matrix": {
+      "tn": 26428,
+      "fp": 1446,
+      "fn": 1060,
+      "tp": 942
+    },
+    "defaults_captured_in_top_10pct": 0.5295
+  },
+  "xgboost": {
+    "roc_auc": 0.866,
+    "pr_auc": 0.3938,
+    "ks": 0.5789,
+    "brier": 0.0494,
+    "base_rate": 0.067,
+    "threshold": 0.2287,
+    "precision_at_threshold": 0.4116,
+    "recall_at_threshold": 0.478,
+    "confusion_matrix": {
+      "tn": 26506,
+      "fp": 1368,
+      "fn": 1045,
+      "tp": 957
+    },
+    "defaults_captured_in_top_10pct": 0.545,
+    "best_iteration": 81
+  },
+  "versions": {
+    "python": "3.12.3",
+    "xgboost": "3.4.1",
+    "scikit-learn": "1.9.1",
+    "pandas": "3.0.6"
+  }
 }

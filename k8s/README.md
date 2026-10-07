@@ -1,60 +1,29 @@
-# Kubernetes Deployment — Credit Data Pipeline
+# Kubernetes (local cluster only)
 
-Production-grade Kubernetes configuration for deploying the credit risk ML pipeline on a multi-node cluster.
+Tested target: minikube. This is a learning setup, not a production cluster:
+storage is a hostPath volume and there is no ingress, autoscaling or backup.
 
-## Architecture
+```bash
+minikube start --cpus=4 --memory=4096
+eval $(minikube docker-env)                      # build inside minikube
+docker build -t credit-data-pipeline:local .
 
+kubectl apply -f k8s/namespace.yaml              # 1. namespace first
+kubectl -n credit-pipeline create secret generic credit-pipeline-db \
+  --from-literal=DB_NAME=credit_risk_db \
+  --from-literal=DB_USER=dataengineer \
+  --from-literal=DB_PASSWORD="$(openssl rand -hex 16)"   # 2. secret, never committed
+kubectl apply -f k8s/postgres.yaml               # 3. database
+minikube ssh -- sudo mkdir -p /data/credit-pipeline/raw
+minikube cp data/raw/cs-training.csv /data/credit-pipeline/raw/cs-training.csv
+kubectl apply -f k8s/job.yaml                    # 4. run the pipeline once
+kubectl -n credit-pipeline logs -f job/credit-pipeline
 ```
-ml-production namespace
-├── postgres (Deployment + Service)
-│   └── PersistentVolumeClaim (10Gi)
-└── credit-pipeline (Deployment)
-    ├── PersistentVolumeClaim: data (5Gi)
-    ├── PersistentVolumeClaim: models (1Gi)
-    └── initContainer: wait-for-postgres
-```
 
-## Files
+Why these choices:
 
-| File | Description |
+| Decision | Reason |
 |---|---|
-| `deployment.yaml` | Pipeline container spec with resource limits and init container |
-| `service.yaml` | PostgreSQL Service, Deployment, Secrets, PVCs, and Namespace |
-
-## Prerequisites
-
-- Kubernetes cluster (local: minikube / kind, cloud: GKE / EKS / AKS)
-- kubectl configured
-- Docker image pushed to registry
-
-## Deploy
-
-```bash
-# Apply all configurations
-kubectl apply -f k8s/service.yaml
-kubectl apply -f k8s/deployment.yaml
-
-# Verify
-kubectl get pods -n ml-production
-kubectl get pvc -n ml-production
-kubectl logs -f deployment/credit-pipeline -n ml-production
-```
-
-## Configuration
-
-Credentials are managed via Kubernetes Secret. To update:
-
-```bash
-# Encode new value
-echo -n "new_password" | base64
-
-# Edit secret
-kubectl edit secret credit-pipeline-secret -n ml-production
-```
-
-## Resource Allocation
-
-| Component | CPU Request | CPU Limit | Memory Request | Memory Limit |
-|---|---|---|---|---|
-| credit-pipeline | 250m | 1000m | 512Mi | 2Gi |
-| postgres | 100m | 500m | 256Mi | 1Gi |
+| `Job`, not `Deployment` | The pipeline finishes. A Deployment would restart it in a loop. |
+| Secret created with `kubectl` | Base64 in a committed YAML is encoding, not encryption. |
+| Namespace in its own file, applied first | `kubectl apply` processes documents in order; objects in a namespace that does not exist yet fail. |

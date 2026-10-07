@@ -1,5 +1,7 @@
-import pandas as pd
 import logging
+
+import pandas as pd
+
 from src.utils.db import get_engine, get_row_count
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -19,7 +21,7 @@ COLUMN_RENAME = {
     'NumberOfDependents': 'num_dependents'
 }
 
-def ingest_credit_csv(filepath: str = "data/raw/cs-training.csv"):
+def ingest_credit_csv(filepath: str = "data/raw/cs-training.csv", engine=None):
     logger.info(f"[SOURCE 1] Loading CSV: {filepath}")
     df = pd.read_csv(filepath)
     df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
@@ -30,7 +32,7 @@ def ingest_credit_csv(filepath: str = "data/raw/cs-training.csv"):
     logger.info(f"Null counts  :\n{df.isnull().sum()}")
     logger.info(f"Default rate : {df['default_flag'].mean():.2%}")
 
-    engine = get_engine()
+    engine = engine or get_engine()
     df.to_sql('credit_raw', engine, if_exists='replace', index=False, chunksize=5000)
     logger.info(f"[OK] credit_raw: {get_row_count(engine, 'credit_raw')} rows loaded")
     return df
